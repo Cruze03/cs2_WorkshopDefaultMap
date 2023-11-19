@@ -1,12 +1,13 @@
-﻿namespace WorkshopDefaultMap;
+namespace WorkshopDefaultMap;
 
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Timers;
 
 public class WorkshopDefaultMap : BasePlugin
 {
     public override string ModuleName => "Workshop Collection Default Map";
-    public override string ModuleVersion => "0.1";
+    public override string ModuleVersion => "0.2";
     public override string ModuleAuthor => "Cruze";
     public override string ModuleDescription => "Sets default map after server restart";
 
@@ -14,7 +15,7 @@ public class WorkshopDefaultMap : BasePlugin
 
     private string MapName = "";
 
-    private bool g_bChangeMap;
+    private bool g_bChangeMap = true;
 
     public override void Load(bool hotReload)
     {
@@ -22,12 +23,14 @@ public class WorkshopDefaultMap : BasePlugin
 
         MapName = File.ReadAllText(FilePath);
 
+        g_bChangeMap = true;
+
         if(string.IsNullOrEmpty(MapName))
         {
-            Log("WorkshopDefaultMap.txt is blank. Plugin will not work as intended.");
+            LogError("WorkshopDefaultMap.txt is blank. Plugin will not work as intended.");
         }
 
-        g_bChangeMap = true;
+        Log($"MapName found: {MapName}");
 
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
     }
@@ -36,23 +39,37 @@ public class WorkshopDefaultMap : BasePlugin
     {
         if (!g_bChangeMap || string.IsNullOrEmpty(MapName)) return;
         
-        base.AddTimer(2.0f, Timer_OnMapStart);
+        AddTimer(7.0f, () => ChangeMap(), TimerFlags.STOP_ON_MAPCHANGE);
+        Log($"Changing map to {MapName}...");
     }
 
-    private void Timer_OnMapStart()
+    private void ChangeMap()
     {
-        if (!g_bChangeMap) return;
-        
+        if (!g_bChangeMap || string.IsNullOrEmpty(MapName))
+        {
+            LogError($"[ChangeMap] Error. {g_bChangeMap} & \"{MapName}\"");
+            return;
+        }
+
         Server.ExecuteCommand($"ds_workshop_changelevel {MapName}");
         NativeAPI.IssueServerCommand($"ds_workshop_changelevel {MapName}");
-
+        Log($"Changed map to {MapName}.");
+        
         g_bChangeMap = false;
+    }
+
+    private static void LogError(string message)
+    {
+        Console.BackgroundColor = ConsoleColor.DarkGray;
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine(message);
+        Console.ResetColor();
     }
 
     private static void Log(string message)
     {
         Console.BackgroundColor = ConsoleColor.DarkGray;
-        Console.ForegroundColor = ConsoleColor.Red;
+        Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine(message);
         Console.ResetColor();
     }
