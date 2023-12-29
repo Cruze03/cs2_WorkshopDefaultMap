@@ -7,7 +7,7 @@ using CounterStrikeSharp.API.Modules.Timers;
 public class WorkshopDefaultMap : BasePlugin
 {
     public override string ModuleName => "Workshop Collection Default Map";
-    public override string ModuleVersion => "0.2";
+    public override string ModuleVersion => "0.3";
     public override string ModuleAuthor => "Cruze";
     public override string ModuleDescription => "Sets default map after server restart";
 
@@ -16,6 +16,8 @@ public class WorkshopDefaultMap : BasePlugin
     private string MapName = "";
 
     private bool g_bChangeMap = true;
+
+    public CounterStrikeSharp.API.Modules.Timers.Timer? g_Timer = null;
 
     public override void Load(bool hotReload)
     {
@@ -33,21 +35,29 @@ public class WorkshopDefaultMap : BasePlugin
         Log($"MapName found: {MapName}");
 
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
+
+        if(hotReload)
+        {
+            OnMapStart(Server.MapName);
+        }
     }
 
     private void OnMapStart(string mapName)
     {
         if (!g_bChangeMap || string.IsNullOrEmpty(MapName)) return;
         
-        AddTimer(7.0f, () => ChangeMap(), TimerFlags.STOP_ON_MAPCHANGE);
+        if(g_Timer != null)
+            g_Timer.Kill();
+        
+        g_Timer = AddTimer(7.0f, () => ChangeMap());
         Log($"Changing map to {MapName}...");
     }
 
     private void ChangeMap()
     {
+        g_Timer = null;
         if (!g_bChangeMap || string.IsNullOrEmpty(MapName))
         {
-            LogError($"[ChangeMap] Error. {g_bChangeMap} & \"{MapName}\"");
             return;
         }
 
