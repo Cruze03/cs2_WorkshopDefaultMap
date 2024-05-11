@@ -3,84 +3,94 @@ namespace WorkshopDefaultMap;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Timers;
+using Microsoft.Extensions.Logging;
+using System.Text.Json.Serialization;
 
-public class WorkshopDefaultMap : BasePlugin
+public class WorkshopDefaultMapConfig : BasePluginConfig
+{
+    public override int Version { get; set; } = 1;
+
+    [JsonPropertyName("Map")]
+    public string Map { get; set; } = "Awp_arena_vlgbeta_gg2";
+}
+
+public class WorkshopDefaultMap : BasePlugin, IPluginConfig<WorkshopDefaultMapConfig>
 {
     public override string ModuleName => "Workshop Collection Default Map";
-    public override string ModuleVersion => "0.3";
+    public override string ModuleVersion => "0.4";
     public override string ModuleAuthor => "Cruze";
     public override string ModuleDescription => "Sets default map after server restart";
 
-    private string FilePath => Path.Join(ModuleDirectory, "WorkshopDefaultMap.txt"); 
+    private bool g_bServerStarted = true;
+    private ulong g_uOldMapId;
 
-    private string MapName = "";
+    private Timer? g_TimerForceReset = null;
+    private Timer? g_TimerChangeMap = null;
 
-    private bool g_bChangeMap = true;
+    public required WorkshopDefaultMapConfig Config { get; set; } = new();
 
-    public CounterStrikeSharp.API.Modules.Timers.Timer? g_Timer = null;
+    public void OnConfigParsed(WorkshopDefaultMapConfig config)
+    {
+        Config = config;
+
+        if(string.IsNullOrEmpty(Config.Map))
+            Logger.LogError("Map specified in config is blank. Plugin will not work as intended.");
+    }
 
     public override void Load(bool hotReload)
     {
         base.Load(hotReload);
 
-        MapName = File.ReadAllText(FilePath);
-
-        g_bChangeMap = true;
-
-        if(string.IsNullOrEmpty(MapName))
-        {
-            LogError("WorkshopDefaultMap.txt is blank. Plugin will not work as intended.");
-        }
-
-        Log($"MapName found: {MapName}");
-
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
 
         if(hotReload)
         {
-            OnMapStart(Server.MapName);
+            Logger.LogInformation($"Plugin needs server restart to work.");
         }
     }
 
     private void OnMapStart(string mapName)
     {
-        if (!g_bChangeMap || string.IsNullOrEmpty(MapName)) return;
-        
-        if(g_Timer != null)
-            g_Timer.Kill();
-        
-        g_Timer = AddTimer(7.0f, () => ChangeMap());
-        Log($"Changing map to {MapName}...");
+        if(string.IsNullOrEmpty(Config.Map)) return;
+
+        if(g_bServerStarted || g_TimerForceReset != null)
+        {
+            g_bServerStarted = false;
+            g_TimerForceReset?.Kill();
+            g_TimerForceReset = AddTimer(10.0f, ResetTimer);
+            
+            g_TimerChangeMap?.Kill();
+            g_TimerChangeMap = AddTimer(1.0f, ChangeMap);
+            Logger.LogInformation($"Changing map to {Config.Map}...");
+        }
     }
 
     private void ChangeMap()
     {
-        g_Timer = null;
-        if (!g_bChangeMap || string.IsNullOrEmpty(MapName))
+        g_TimerChangeMap = null;
+        
+        if(string.IsNullOrEmpty(Config.Map)) return;
+        
+        if(Server.MapName.Equals(Config.Map, StringComparison.OrdinalIgnoreCase)) return;
+
+        if(!ulong.TryParse(Config.Map, out ulong mapid))
         {
+            Server.ExecuteCommand($"ds_workshop_changelevel {Config.Map}");
+            Logger.LogInformation($"Changed map to {Config.Map}.");
             return;
         }
 
-        Server.ExecuteCommand($"ds_workshop_changelevel {MapName}");
-        NativeAPI.IssueServerCommand($"ds_workshop_changelevel {MapName}");
-        Log($"Changed map to {MapName}.");
+        if(g_uOldMapId == mapid) return; // Hacky fix till there is a way to find workshop id of a map.
         
-        g_bChangeMap = false;
+        Server.ExecuteCommand($"host_workshop_map {mapid}");
+        Logger.LogInformation($"Changed map to mapid {mapid}.");
+        g_uOldMapId = mapid;
     }
 
-    private static void LogError(string message)
+    private void ResetTimer()
     {
-        Console.BackgroundColor = ConsoleColor.DarkGray;
-        Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine(message);
-        Console.ResetColor();
-    }
-
-    private static void Log(string message)
-    {
-        Console.BackgroundColor = ConsoleColor.DarkGray;
-        Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine(message);
-        Console.ResetColor();
+        g_TimerForceReset = null;
+        g_TimerChangeMap?.Kill();
+        g_TimerChangeMap = null;
     }
 }
