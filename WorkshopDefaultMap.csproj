@@ -1,19 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
- <ItemGroup>
-
-    <Reference Include="CounterStrikeSharp.API">
-
-       <HintPath>CounterStrikeSharp.API.dll</HintPath>
-
-    </Reference>
-
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="CounterStrikeSharp.API" Version="*" />
+	</ItemGroup>
 
 </Project>
