@@ -4,6 +4,7 @@ using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Timers;
 using Microsoft.Extensions.Logging;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 
 public class WorkshopDefaultMapConfig : BasePluginConfig
@@ -17,12 +18,12 @@ public class WorkshopDefaultMapConfig : BasePluginConfig
 public class WorkshopDefaultMap : BasePlugin, IPluginConfig<WorkshopDefaultMapConfig>
 {
     public override string ModuleName => "Workshop Collection Default Map";
-    public override string ModuleVersion => "0.4";
+    public override string ModuleVersion => "0.5";
     public override string ModuleAuthor => "Cruze";
     public override string ModuleDescription => "Sets default map after server restart";
 
     private bool g_bServerStarted = true;
-    private ulong g_uOldMapId;
+    // private ulong g_uOldMapId;
 
     private Timer? g_TimerForceReset = null;
     private Timer? g_TimerChangeMap = null;
@@ -42,12 +43,15 @@ public class WorkshopDefaultMap : BasePlugin, IPluginConfig<WorkshopDefaultMapCo
         base.Load(hotReload);
 
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
-
-        if(hotReload)
-        {
-            Logger.LogInformation($"Plugin needs server restart to work.");
-        }
     }
+
+    public override void Unload(bool hotReload)
+    {
+        base.Unload(hotReload);
+
+        RemoveListener<Listeners.OnMapStart>(OnMapStart);
+    }
+
 
     private void OnMapStart(string mapName)
     {
@@ -58,20 +62,26 @@ public class WorkshopDefaultMap : BasePlugin, IPluginConfig<WorkshopDefaultMapCo
             g_bServerStarted = false;
             g_TimerForceReset?.Kill();
             g_TimerForceReset = AddTimer(10.0f, ResetTimer);
-            
+
             g_TimerChangeMap?.Kill();
-            g_TimerChangeMap = AddTimer(1.0f, ChangeMap);
-            Logger.LogInformation($"Changing map to {Config.Map}...");
+            g_TimerChangeMap = AddTimer(5.0f, ChangeMap);
         }
     }
 
     private void ChangeMap()
     {
         g_TimerChangeMap = null;
-        
+
         if(string.IsNullOrEmpty(Config.Map)) return;
-        
+
         if(Server.MapName.Equals(Config.Map, StringComparison.OrdinalIgnoreCase)) return;
+
+        if(IsDefaultMap(Server.MapName))
+        {
+            Server.ExecuteCommand($"changelevel {Config.Map}");
+            Logger.LogInformation($"Changed map to {Config.Map}.");
+            return;
+        }
 
         if(!ulong.TryParse(Config.Map, out ulong mapid))
         {
@@ -80,11 +90,13 @@ public class WorkshopDefaultMap : BasePlugin, IPluginConfig<WorkshopDefaultMapCo
             return;
         }
 
-        if(g_uOldMapId == mapid) return; // Hacky fix till there is a way to find workshop id of a map.
-        
+        if(GetCurrentWorkshopMapID() == mapid) return;
+
+        // if(g_uOldMapId == mapid) return; // Hacky fix till there is a way to find workshop id of a map.
+
         Server.ExecuteCommand($"host_workshop_map {mapid}");
         Logger.LogInformation($"Changed map to mapid {mapid}.");
-        g_uOldMapId = mapid;
+        // g_uOldMapId = mapid;
     }
 
     private void ResetTimer()
@@ -92,5 +104,26 @@ public class WorkshopDefaultMap : BasePlugin, IPluginConfig<WorkshopDefaultMapCo
         g_TimerForceReset = null;
         g_TimerChangeMap?.Kill();
         g_TimerChangeMap = null;
+    }
+
+    private bool IsDefaultMap(string map)
+    {
+        List<string> defaultMapPool = ["ar_baggage","ar_pool_day","ar_shoots","de_anubis","de_ancient","de_dust2","de_inferno",
+        "de_mirage","de_nuke","de_overpass","de_vertigo","de_basalt","de_palais","de_train",
+        "de_whistle","cs_italy","cs_office"];
+
+        return defaultMapPool.Contains(map);
+    }
+
+    private delegate IntPtr GetAddonNameDelegate(IntPtr thisPtr);
+    private readonly INetworkServerService networkServerService = new();
+    public ulong GetCurrentWorkshopMapID()
+    {
+        IntPtr networkGameServer = networkServerService.GetIGameServer().Handle;
+        IntPtr vtablePtr = Marshal.ReadIntPtr(networkGameServer);
+        IntPtr functionPtr = Marshal.ReadIntPtr(vtablePtr + (25 * IntPtr.Size));
+        var getAddonName = Marshal.GetDelegateForFunctionPointer<GetAddonNameDelegate>(functionPtr);
+        IntPtr result = getAddonName(networkGameServer);
+        return ulong.Parse(Marshal.PtrToStringAnsi(result)!.Split(',')[0]);
     }
 }

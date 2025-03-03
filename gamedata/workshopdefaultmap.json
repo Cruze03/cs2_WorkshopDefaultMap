@@ -1,0 +1,14 @@
+{
+    "INetworkServerService_GetIGameServer": {
+        "offsets": {
+        "windows": 23,
+        "linux": 24
+        }
+    },
+    "INetworkGameServer_Slots": {
+        "offsets": {
+        "windows": 624,
+        "linux": 640
+        }
+    }
+}
